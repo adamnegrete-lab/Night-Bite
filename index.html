@@ -20,6 +20,14 @@ html,body{margin:0;height:100%;background:#0b0e1a;overflow:hidden;touch-action:n
 #ui.on{display:block}
 #rot{position:absolute;left:0;width:100%;text-align:center;color:#ffcc33;font:bold 13px monospace;line-height:1.6;display:none}
 #dpad{position:absolute;pointer-events:auto;touch-action:none}
+#padBtn{position:absolute;display:none;z-index:5;font:bold 13px monospace;padding:8px 12px;border-radius:10px;border:2px solid #9fe0ff;background:#12203a;color:#9fe0ff}
+#padTest{position:fixed;inset:0;display:none;z-index:12;background:rgba(5,7,20,.96);font-family:monospace;color:#fff;overflow:auto}
+#padTestCard{max-width:720px;margin:0 auto;padding:12px}
+#padTestCard h2{color:#ffcc33;margin:4px 0 8px;font-size:18px}
+#padTestCard .pt{border:2px solid #33406a;border-radius:8px;padding:6px 8px;margin:6px 0;font-size:12px;line-height:1.5}
+#padTestCard .pt.on{border-color:#7dff7a}
+#padTestCard button{font:bold 15px monospace;padding:10px 14px;margin:6px 4px;border-radius:8px;border:2px solid #fff;background:#2f62c4;color:#fff}
+#padTestCard .log{font-size:11px;color:#9fe0ff;white-space:pre-wrap}
 #onlineBtn{position:absolute;display:none;z-index:5;font:bold 15px monospace;padding:10px 16px;border-radius:10px;border:3px solid #ffcc33;background:#1d2a5a;color:#ffcc33;letter-spacing:1px}
 #lobby{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(5,7,20,.88);z-index:10;font-family:monospace;color:#fff}
 #lobbyCard{background:#121a38;border:3px solid #ffcc33;border-radius:14px;padding:16px 18px;max-width:440px;width:88%;max-height:92vh;overflow:auto;text-align:center}
@@ -54,6 +62,8 @@ html,body{margin:0;height:100%;background:#0b0e1a;overflow:hidden;touch-action:n
 <body>
 <canvas id="c" aria-label="Night Bite game"></canvas>
 <button id="onlineBtn">ONLINE PLAY</button>
+<button id="padBtn">🎮 CONTROLLER TEST</button>
+<div id="padTest"><div id="padTestCard"></div></div>
 <div id="lobby"><div id="lobbyCard"></div></div>
 <div id="ui">
   <div id="dpad"><div class="dp" id="dU">▲</div><div class="dp" id="dD">▼</div><div class="dp" id="dL">◀</div><div class="dp" id="dR">▶</div><div id="dC"></div></div>
@@ -507,8 +517,23 @@ function pickTaken(i,pid){if(pid!==0&&i===sel)return true;for(const p of padPids
 function freePick(pid){for(let i=0;i<4;i++){if(i!==sel&&!padPids().some(p=>p!==pid&&picks[p]===i))return i;}return 0;}const padOwner={},padPrev={};let padSeen=false;
 function readPad(g){const B=i=>!!(g.buttons[i]&&(g.buttons[i].pressed||g.buttons[i].value>.5)),ax=g.axes[0]||0,ay=g.axes[1]||0,std=g.mapping==='standard';let anyBtn=false;for(let i=0;i<g.buttons.length;i++)if(B(i)){anyBtn=true;break;}
  return{left:ax<-.4||B(14),right:ax>.4||B(15),up:ay<-.4||B(12),down:ay>.4||B(13),attack:B(2)||B(1),jump:B(0),special:B(3)||B(5),start:B(9)||(!std&&B(7)),anyBtn};}
-let padCount=0;
-function padRoute(){if(NET.role==='guest')return;let gps=[];try{gps=navigator.getGamepads?[...navigator.getGamepads()]:[];}catch(e){}
+let padCount=0;const padLog=[];function plog(t){padLog.unshift(new Date().toLocaleTimeString()+'  '+t);padLog.length=Math.min(padLog.length,12);}
+addEventListener('gamepadconnected',e=>plog('CONNECTED #'+e.gamepad.index+' '+e.gamepad.id.slice(0,40)));
+addEventListener('gamepaddisconnected',e=>plog('DISCONNECTED #'+e.gamepad.index+' '+e.gamepad.id.slice(0,40)));
+let padTestOn=false;
+function openPadTest(){padTestOn=true;document.getElementById('padTest').style.display='block';drawPadTest();}
+function closePadTest(){padTestOn=false;document.getElementById('padTest').style.display='none';}
+function drawPadTest(){if(!padTestOn)return;let gps=[];let err='';try{gps=navigator.getGamepads?[...navigator.getGamepads()]:[];}catch(e){err=String(e);}
+ const slots=gps.map((g,i)=>{if(!g)return `<div class="pt">Slot ${i}: empty</div>`;const pressed=[];g.buttons.forEach((b,j)=>{if(b&&(b.pressed||b.value>.5))pressed.push(j);});
+  const own=padOwner[g.index];return `<div class="pt ${pressed.length?'on':''}"><b>Slot ${i}</b> · index ${g.index} · ${g.connected===false?'NOT CONNECTED':'connected'} · mapping "${g.mapping||'none'}" · ${g.buttons.length} buttons<br>${(g.id||'').slice(0,70)}<br>Buttons down: <b>${pressed.length?pressed.join(', '):'-'}</b> · Stick: ${(g.axes[0]||0).toFixed(2)}, ${(g.axes[1]||0).toFixed(2)}<br>Player: <b style="color:${own===undefined?'#888':PCOL[own]}">${own===undefined?'not joined yet':(own+1)+'P'}</b></div>`;}).join('');
+ document.getElementById('padTestCard').innerHTML=`<h2>CONTROLLER TEST</h2><p>Hold a button on each controller. Every controller should appear below and light up green.</p>
+ <p>The browser reports <b>${gps.filter(g=>g).length}</b> controller(s) in <b>${gps.length}</b> slot(s).${err?' Error: '+err:''}<br>${navigator.userAgent.slice(0,120)}</p>${slots||'<div class="pt">No controller slots reported. Press a button on a controller.</div>'}
+ <div class="log">${padLog.join('\n')||'No connect events yet.'}</div><button id="ptReset">RESET PLAYER SLOTS</button><button id="ptClose">CLOSE</button>`;
+ document.getElementById('ptClose').onclick=closePadTest;document.getElementById('ptReset').onclick=()=>{for(const k in padOwner)delete padOwner[k];for(const k in padPrev)delete padPrev[k];plog('player slots reset');};}
+setInterval(drawPadTest,150);
+document.getElementById('padBtn').onclick=e=>{e.stopPropagation();openPadTest();};document.getElementById('padBtn').addEventListener('pointerdown',e=>e.stopPropagation());
+addEventListener('keydown',e=>{if(e.code==='KeyG')padTestOn?closePadTest():openPadTest();});
+function padRoute(){if(NET.role==='guest'||padTestOn)return;let gps=[];try{gps=navigator.getGamepads?[...navigator.getGamepads()]:[];}catch(e){}
  padCount=gps.filter(g=>g&&g.connected!==false).length;
  for(const g of gps){if(!g||g.connected===false)continue;const st=readPad(g),pv=padPrev[g.index]||{};padPrev[g.index]=st;const any=st.anyBtn||st.left||st.right||st.up||st.down;
   if(any&&!padSeen){padSeen=true;ui.classList.add('pad');}if(any)ui.classList.add('pad');
@@ -561,7 +586,7 @@ addEventListener('keydown',e=>{if(e.code==='KeyF'){toggleFS();}});
 document.getElementById('bL').addEventListener('pointerdown',e=>{e.preventDefault();ctlMode=ctlMode==='overlay'?'side':'overlay';try{localStorage.setItem('nb_ctl',ctlMode);}catch(_){}layout();});
 document.getElementById('bM').style.opacity=muted?.4:1;
 let tapQ=null;
-cv.addEventListener('pointerdown',e=>{if(e.pointerType==='touch')ui.classList.remove('pad');initAudio();if(lobby.style.display==='flex')return;if(e.pointerType==='touch'&&!ui.classList.contains('on'))showTouch();const r=cv.getBoundingClientRect();tapQ={x:(e.clientX-r.left)/r.width*W,y:(e.clientY-r.top)/r.height*H};});
+cv.addEventListener('pointerdown',e=>{if(padTestOn)return;if(e.pointerType==='touch')ui.classList.remove('pad');initAudio();if(lobby.style.display==='flex')return;if(e.pointerType==='touch'&&!ui.classList.contains('on'))showTouch();const r=cv.getBoundingClientRect();tapQ={x:(e.clientX-r.left)/r.width*W,y:(e.clientY-r.top)/r.height*H};});
 addEventListener('touchstart',()=>{if(!ui.classList.contains('on'))showTouch();},{passive:true});
 addEventListener('contextmenu',e=>e.preventDefault());
 
@@ -594,7 +619,7 @@ function layout(){
  if(k>=1&&k/fitDev>.85){const ncw=W*k/dpr,nch=H*k/dpr;cx+=(cw-ncw)/2;if(!(isTouch&&portrait))cy+=(ch-nch)/2;cw=ncw;ch=nch;}
  cv.width=Math.round(cw*dpr);cv.height=Math.round(ch*dpr);
  cv.style.width=cw+'px';cv.style.height=ch+'px';cv.style.left=cx+'px';cv.style.top=cy+'px';
- onlineBtn.style.left=Math.round(cx+cw-168)+'px';onlineBtn.style.width='160px';onlineBtn.style.top=Math.round(cy+8)+'px';
+ onlineBtn.style.left=Math.round(cx+cw-168)+'px';onlineBtn.style.width='160px';onlineBtn.style.top=Math.round(cy+8)+'px';{const pb=document.getElementById('padBtn');pb.style.left=Math.round(cx+8)+'px';pb.style.top=Math.round(cy+8)+'px';}
 }
 addEventListener('resize',layout);addEventListener('orientationchange',()=>setTimeout(layout,200));
 if(isTouch)ui.classList.add('on');layout();
@@ -1368,7 +1393,7 @@ function frame(now){let dt=Math.min(.1,(now-last)/1000);last=now;
  if(NET.role==='guest'){acc=0;guestTick(dt);}else{acc+=dt;let n=0;while(acc>=1/60&&n<6){step(1/60);acc-=1/60;n++;}if(n>=6)acc=0;
   if(NET.role==='host')heartbeat();
   if(NET.role==='host'&&NET.inGame){NET.snapT-=dt;if(NET.snapT<=0){NET.snapT=1/30;broadcast({t:'s',d:makeSnap()});}}else NET.sfxQ.length=0;}
- onlineBtn.style.display=(ONLINE&&gs==='title'&&NET.role==='local'&&lobby.style.display!=='flex')?'block':'none';try{render();}catch(e){console.error(e);}requestAnimationFrame(frame);}
+ onlineBtn.style.display=(ONLINE&&gs==='title'&&NET.role==='local'&&lobby.style.display!=='flex')?'block':'none';document.getElementById('padBtn').style.display=((gs==='title'||gs==='select'||gs==='pause')&&NET.role==='local'&&lobby.style.display!=='flex'&&!padTestOn)?'block':'none';try{render();}catch(e){console.error(e);}requestAnimationFrame(frame);}
 requestAnimationFrame(frame);
 window.__NET=NET;window.__nb={get gs(){return gs},set gs(v){gs=v},startGame,get bros(){return bros},get foes(){return foes},get camX(){return camX},set camX(v){camX=v},get boss(){return boss},WAVES,setWave(i){waveIdx=i;waveActive=false;},set auto(v){AUTO=v},toBoss(){waveIdx=6;waveActive=false;foes=[];camX=LEVEL_END-W;for(const b of bros){b.x=camX+80;}},get score(){return score}};
 </script>
