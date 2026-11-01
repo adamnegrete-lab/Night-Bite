@@ -3,6 +3,15 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#0b0e1a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="Night Bite">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="icon-192.png">
+<script>if('serviceWorker' in navigator)addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));</script>
 <title>Night Bite: The Catfish Brothers</title>
 <style>
 html,body{margin:0;height:100%;background:#0b0e1a;overflow:hidden;touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
@@ -29,6 +38,7 @@ html,body{margin:0;height:100%;background:#0b0e1a;overflow:hidden;touch-action:n
 #ui.ghost .b{opacity:.6}
 #ui.ghost .dp.on,#ui.ghost .b.down{opacity:.9}
 #ui.ghost .tb{opacity:.55}
+#ui.pad .b,#ui.pad #dpad{display:none}
 .dp{position:absolute;background:linear-gradient(#3a4052,#262a36);border:3px solid #5a6278;color:#cfd6e6;display:flex;align-items:center;justify-content:center;font:bold 22px sans-serif;border-radius:12px;box-sizing:border-box;box-shadow:0 4px 0 #11131a}
 .dp.on{background:#ffcc33;color:#222;border-color:#fff;box-shadow:0 1px 0 #11131a;transform:translateY(3px)}
 #dC{position:absolute;background:#262a36;border-radius:6px}
@@ -53,6 +63,7 @@ html,body{margin:0;height:100%;background:#0b0e1a;overflow:hidden;touch-action:n
   <div class="tb" id="bP">II</div>
   <div class="tb" id="bM">♪</div>
   <div class="tb" id="bL">⇆</div>
+  <div class="tb" id="bF">⛶</div>
   <div id="rot">↻ TURN YOUR PHONE SIDEWAYS<br>FOR THE FULL ARCADE SCREEN</div>
 </div>
 <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
@@ -489,10 +500,27 @@ function toggleMute(){muted=!muted;try{localStorage.setItem('nb_mute',muted?'1':
 const keys={},tch={},latch={},KM={ArrowLeft:'left',KeyA:'left',ArrowRight:'right',KeyD:'right',ArrowUp:'up',KeyW:'up',ArrowDown:'down',KeyS:'down',KeyJ:'attack',KeyZ:'attack',KeyK:'jump',KeyX:'jump',Space:'jump',KeyL:'special',KeyC:'special',Enter:'start',KeyP:'start',Escape:'start'};
 addEventListener('keydown',e=>{initAudio();if(e.code==='KeyM'){toggleMute();return;}const k=KM[e.code];if(k){if(!keys[k])latch[k]=true;keys[k]=true;e.preventDefault();}});
 addEventListener('keyup',e=>{const k=KM[e.code];if(k)keys[k]=false;});
-let prevIn={},IN={},holdT=0;
+let prevIn={},IN={},holdT=0;const padOwner={},padPrev={};let padSeen=false;
+function readPad(g){const B=i=>!!(g.buttons[i]&&g.buttons[i].pressed),ax=g.axes[0]||0,ay=g.axes[1]||0;return{left:ax<-.4||B(14),right:ax>.4||B(15),up:ay<-.4||B(12),down:ay>.4||B(13),attack:B(2)||B(1),jump:B(0),special:B(3)||B(5),start:B(9)};}
+function padRoute(){if(NET.role==='guest')return;let gps=[];try{gps=navigator.getGamepads?[...navigator.getGamepads()]:[];}catch(e){}
+ for(const g of gps){if(!g||g.connected===false)continue;const st=readPad(g),pv=padPrev[g.index]||{};padPrev[g.index]=st;const any=Object.values(st).some(v=>v);
+  if(any&&!padSeen){padSeen=true;ui.classList.add('pad');}if(any)ui.classList.add('pad');
+  const own=padOwner[g.index];
+  if(own===undefined){const pressed=(st.jump&&!pv.jump)||(st.start&&!pv.start)||(st.attack&&!pv.attack);if(!pressed)continue;
+   const p0=Object.values(padOwner).includes(0);
+   if(!p0){padOwner[g.index]=0;continue;}
+   if(gs==='play'&&NET.role==='local'){const used=new Set([...Object.values(padOwner),...bros.filter(b=>b.human).map(b=>b.pid)]);let pid=1;while(used.has(pid))pid++;if(pid>3)continue;
+    let b=bros.find(q=>!q.human&&!q.hidden&&q.state!=='dead');
+    if(!b&&bros.length<4){const key=PLAYABLE.find(k=>!bros.some(q=>q.key===k));if(key){b=makeBro(key,true,camX+50,clamp(human.y,GT+10,GB-10));b.z=80;b.state='jump';bros.push(b);}}
+    if(b){b.human=true;b.pid=pid;b.lives=3;b.inv=1.5;padOwner[g.index]=pid;sfx('ok');popText((pid+1)+'P JOINED!',b.x,b.y-60,'#ffcc33');}}
+   else if(gs==='title'||gs==='select'||gs==='intro'){const used=new Set(Object.values(padOwner));let pid=1;while(used.has(pid))pid++;if(pid<=3){padOwner[g.index]=pid;sfx('ok');}}
+   continue;}
+  if(own>0){const I=NET.inputs[own]||(NET.inputs[own]={h:{},c:{attack:0,jump:0,special:0,start:0}});I.h=st;I.ax=0;I.ay=0;for(const k of ['attack','jump','special','start'])if(st[k]&&!pv[k])I.c[k]=(I.c[k]||0)+1;}}}
+addEventListener('gamepaddisconnected',e=>{const pid=padOwner[e.gamepad.index];delete padOwner[e.gamepad.index];if(pid>0){for(const b of bros)if(b.pid===pid&&b.human){b.human=false;b.pid=undefined;b.ai=b.ai||{t:0,tg:null,atkT:0};}delete NET.inputs[pid];}});
+addEventListener('gamepadconnected',()=>{ui.classList.add('pad');});
 function readInput(){
  const c={left:keys.left||tch.left,right:keys.right||tch.right,up:keys.up||tch.up,down:keys.down||tch.down,attack:keys.attack||tch.attack,jump:keys.jump||tch.jump,special:keys.special||tch.special,start:keys.start||tch.start};
- try{const gps=navigator.getGamepads?navigator.getGamepads():[];for(const g of gps){if(!g)continue;const ax=g.axes[0]||0,ay=g.axes[1]||0,B=i=>g.buttons[i]&&g.buttons[i].pressed;
+ try{const gps=navigator.getGamepads?navigator.getGamepads():[];for(const g of gps){if(!g)continue;if(padOwner[g.index]>0)continue;const ax=g.axes[0]||0,ay=g.axes[1]||0,B=i=>g.buttons[i]&&g.buttons[i].pressed;
   c.left=c.left||ax<-.4||B(14);c.right=c.right||ax>.4||B(15);c.up=c.up||ay<-.4||B(12);c.down=c.down||ay>.4||B(13);c.attack=c.attack||B(2)||B(1);c.jump=c.jump||B(0);c.special=c.special||B(3)||B(5);c.start=c.start||B(9);}}catch(e){}
  const o={};for(const k in c){o[k]=!!c[k]||!!latch[k];o[k+'P']=(!!c[k]&&!prevIn[k])||!!latch[k];latch[k]=false;}
  if(tch.attack){holdT+=1/60;if(holdT>.32){holdT=.08;o.attackP=true;}}else holdT=0;
@@ -517,10 +545,16 @@ for(const [id,k] of [['bA','attack'],['bJ','jump'],['bS','special']]){const el=d
  const up=()=>{tch[k]=false;el.classList.remove('down');};el.addEventListener('pointerup',up);el.addEventListener('pointercancel',up);}
 document.getElementById('bP').addEventListener('pointerdown',e=>{e.preventDefault();initAudio();if(NET.role==='guest'){latch.start=true;return;}if(gs==='play'||gs==='pause'){gs=gs==='pause'?'play':'pause';}});
 document.getElementById('bM').addEventListener('pointerdown',e=>{e.preventDefault();initAudio();toggleMute();});
+function isFS(){return !!(document.fullscreenElement||document.webkitFullscreenElement);}
+function toggleFS(){const el=document.documentElement;try{if(!isFS()){const f=el.requestFullscreen||el.webkitRequestFullscreen;if(f){const r=f.call(el,{navigationUI:'hide'});if(r&&r.catch)r.catch(()=>{});}try{screen.orientation&&screen.orientation.lock&&screen.orientation.lock('landscape').catch(()=>{});}catch(e){}}
+ else{const x=document.exitFullscreen||document.webkitExitFullscreen;if(x)x.call(document);}}catch(e){}}
+document.getElementById('bF').addEventListener('pointerdown',e=>{e.preventDefault();initAudio();toggleFS();});
+for(const ev of ['fullscreenchange','webkitfullscreenchange'])document.addEventListener(ev,()=>setTimeout(layout,120));
+addEventListener('keydown',e=>{if(e.code==='KeyF'){toggleFS();}});
 document.getElementById('bL').addEventListener('pointerdown',e=>{e.preventDefault();ctlMode=ctlMode==='overlay'?'side':'overlay';try{localStorage.setItem('nb_ctl',ctlMode);}catch(_){}layout();});
 document.getElementById('bM').style.opacity=muted?.4:1;
 let tapQ=null;
-cv.addEventListener('pointerdown',e=>{initAudio();if(lobby.style.display==='flex')return;if(e.pointerType==='touch'&&!ui.classList.contains('on'))showTouch();const r=cv.getBoundingClientRect();tapQ={x:(e.clientX-r.left)/r.width*W,y:(e.clientY-r.top)/r.height*H};});
+cv.addEventListener('pointerdown',e=>{if(e.pointerType==='touch')ui.classList.remove('pad');initAudio();if(lobby.style.display==='flex')return;if(e.pointerType==='touch'&&!ui.classList.contains('on'))showTouch();const r=cv.getBoundingClientRect();tapQ={x:(e.clientX-r.left)/r.width*W,y:(e.clientY-r.top)/r.height*H};});
 addEventListener('touchstart',()=>{if(!ui.classList.contains('on'))showTouch();},{passive:true});
 addEventListener('contextmenu',e=>e.preventDefault());
 
@@ -538,15 +572,15 @@ function layout(){
   const top=cy+ch+8,area=vh-top;const D=Math.round(Math.min(200,vw*.46,area*.78));
   layPad(Math.round(vw*.04),Math.round(top+(area-D)*.55),D);
   const bs=Math.round(Math.min(96,vw*.21,area*.3));layBtns(vw-bs*1.3,top+area*.58,bs);
-  pos(el('bP'),vw/2-66,top+4);pos(el('bM'),vw/2-19,top+4);el('bL').style.display='none';el('rot').style.display='none';
+  pos(el('bP'),vw/2-66,top+4);pos(el('bM'),vw/2-19,top+4);pos(el('bF'),vw/2+28,top+4);el('bL').style.display='none';el('rot').style.display='none';
  }else if(isTouch&&ctlMode==='overlay'){const s=Math.min(vw/W,vh/H);cw=W*s;ch=H*s;cx=(vw-cw)/2;cy=(vh-ch)/2;
   const D=Math.round(Math.min(vh*.44,175));layPad(Math.max(10,Math.round(cx*.5)),vh-D-10,D);
   const bs=Math.round(Math.min(66,vh*.17));layBtns(vw-Math.max(10,cx*.5)-bs*1.3,vh-bs*1.15,bs);
-  const mg=cx;if(mg>=48){const tx=vw-mg/2-19;pos(el('bP'),tx,8);pos(el('bM'),tx,54);pos(el('bL'),tx,100);}else{pos(el('bP'),vw/2-66,vh-46);pos(el('bM'),vw/2-19,vh-46);pos(el('bL'),vw/2+28,vh-46);}el('rot').style.display='none';
+  const mg=cx;if(mg>=48){const tx=vw-mg/2-19;pos(el('bP'),tx,8);pos(el('bM'),tx,54);pos(el('bL'),tx,100);pos(el('bF'),tx,146);}else{pos(el('bP'),vw/2-90,vh-46);pos(el('bM'),vw/2-43,vh-46);pos(el('bL'),vw/2+4,vh-46);pos(el('bF'),vw/2+51,vh-46);}el('rot').style.display='none';
  }else if(isTouch){const side=Math.round(Math.min(210,vw*.25));const s=Math.min((vw-2*side)/W,vh/H);cw=W*s;ch=H*s;cx=(vw-cw)/2;cy=(vh-ch)/2;
   const D=Math.round(Math.min(cx-16,vh*.55,190));layPad(Math.round(cx/2-D/2),Math.round(vh*.6-D/2),D);
   const rp=cx+cw,rw=vw-rp,bs=Math.round(Math.min(84,rw*.4,vh*.22));layBtns(rp+rw/2,vh*.62,bs);
-  pos(el('bP'),rp+rw/2-66,8);pos(el('bM'),rp+rw/2-19,8);pos(el('bL'),rp+rw/2+28,8);el('rot').style.display='none';
+  pos(el('bP'),rp+rw/2-66,8);pos(el('bM'),rp+rw/2-19,8);pos(el('bL'),rp+rw/2+28,8);pos(el('bF'),rp+rw/2-19,54);el('rot').style.display='none';
  }else{const s=Math.min(vw/W,vh/H);cw=W*s;ch=H*s;cx=(vw-cw)/2;cy=(vh-ch)/2;}
  ui.classList.toggle('ghost',isTouch&&!portrait&&ctlMode==='overlay');if(!(isTouch&&portrait))el('bL').style.display='';
  const dpr=Math.min(3,window.devicePixelRatio||1),fitDev=cw/W*dpr,k=Math.floor(fitDev);
@@ -638,8 +672,8 @@ function netInput(pid){const I=NET.inputs[pid];if(!I)return{x:0,y:0};const h=I.h
  const o={x:(h.right?1:0)-(h.left?1:0),y:(h.down?1:0)-(h.up?1:0),attack:!!h.attack,jump:!!h.jump,special:!!h.special,start:!!h.start};
  if(I.ax||I.ay){o.x=I.ax;o.y=I.ay;}
  for(const k of ['attack','jump','special','start'])o[k+'P']=(c[k]||0)!==(pc[k]||0);NET.prevC[pid]=Object.assign({},c);return o;}
-function anyRemoteP(k){let any=false;for(const p of NET.players){if(p.pid===0)continue;const I=NET.inputs[p.pid];if(!I)continue;const pc=NET.prevC[p.pid]||{};if((I.c[k]||0)!==(pc[k]||0))any=true;}return any;}
-function consumeRemote(){for(const p of NET.players){if(p.pid===0)continue;const I=NET.inputs[p.pid];if(I)NET.prevC[p.pid]=Object.assign({},I.c);}}
+function anyRemoteP(k){let any=false;for(const id in NET.inputs){const pid=+id;if(!pid)continue;const I=NET.inputs[pid];if(!I||!I.c)continue;const pc=NET.prevC[pid]||{};if((I.c[k]||0)!==(pc[k]||0))any=true;}return any;}
+function consumeRemote(){for(const id in NET.inputs){const pid=+id;if(!pid)continue;const I=NET.inputs[pid];if(I&&I.c)NET.prevC[pid]=Object.assign({},I.c);}}
 // snapshots
 const rr=v=>Math.round(v*10)/10;
 function mvId(m){if(!m)return null;if(m===MOVES.jk)return 'jk';if(m===GOLF)return 'golf';for(const k of PLAYABLE){const i=SETS[k].indexOf(m);if(i>=0)return k+':'+i;}return null;}
@@ -732,7 +766,8 @@ function makeEnemy(type,x,y){const T=ET[type];return{kind:'enemy',type,T,x,y,z:T
 function startGame(){
  END=null;bobs=[];aval=null;balls=[];boat=null;boatWaves={};truck=null;mk=null;msg=null;pendingMk=null;for(const o of ORDER){texts[o]=0;sent[o]=false;}score=0;camX=0;foes=[];items=[];projs=[];fx=[];waveIdx=0;waveActive=false;spawnQ=[];boss=null;winT=0;lastZone=-1;flashT=0;
  props=[[300,200,'hotdog'],[520,168,'can'],[780,206,'stink'],[940,165,'tackle'],[1160,200,'can'],[1290,168,'stink'],[1480,205,'pizza'],[1560,170,'can'],[1760,200,'stink'],[1950,170,'fishfry'],[2150,205,'can']].map(([x,y,drop])=>({kind:'prop',x,y,hp:1,hw:10,drop}));ambush=false;
- const roster=NET.role==='host'?NET.players.slice():[{pid:0,key:PLAYABLE[sel]}];bros=[];
+ let roster=NET.role==='host'?NET.players.slice():[{pid:0,key:PLAYABLE[sel]}];
+ if(NET.role!=='host'){for(const pid of [...new Set(Object.values(padOwner))].filter(p=>p>0).sort()){const key=[...ORDER,'papa'].find(k=>!roster.some(r=>r.key===k));if(key)roster.push({pid,key});}}bros=[];
  roster.forEach((p,i)=>{const b=makeBro(p.key,true,70-i*16,[185,165,205][i]);b.pid=p.pid;bros.push(b);});human=bros[0];
  if(cpuOn){let i=0;for(const o of ORDER)if(!roster.some(p=>p.key===o)){bros.push(makeBro(o,false,40-i*12,i?205:165));i++;}}
  gs='play';gsT=0;music('main');}
@@ -798,7 +833,7 @@ function updBro(b,dt,inp){
  if(b.pu==='SPEED'&&b.state==='attack')b.st+=dt*.5;
  if(b.state!=='dead'&&b.state!=='special')b.meter=Math.min(100,b.meter+dt*3);
  const d=b.def,spd=85*d.speed*(b.pu==='SPEED'?1.6:1);
- if(b.state==='dead'){b.respT-=dt;if(b.respT<=0&&(!b.human||b.lives>0))respawn(b);else if(b.respT<=-6&&b.human&&NET.role==='host'&&bros.some(q=>q.human&&q!==b&&q.state!=='dead')){b.lives=1;respawn(b);}return;}
+ if(b.state==='dead'){b.respT-=dt;if(b.respT<=0&&(!b.human||b.lives>0))respawn(b);else if(b.respT<=-6&&b.human&&NET.role!=='guest'&&bros.some(q=>q.human&&q!==b&&q.state!=='dead')){b.lives=1;respawn(b);}return;}
  if(b.pu==='JETSKI'){jetski(b,dt,inp);return;}
  const air=b.z>0||b.vz>0;
  if(air){b.vz-=640*dt;b.z+=b.vz*dt;if(b.z<=0){b.z=0;b.vz=0;if(b.state==='jump'||b.state==='jumpatk'){b.state='idle';b.st=0;addFx({type:'dust',x:b.x,y:b.y,life:.25});}}}
@@ -1104,20 +1139,20 @@ function updCamera(dt){
 
 // ================= MAIN STEP =================
 function step(dt){
- const inp=readInput();IN=inp;gsT+=dt;
+ padRoute();const inp=readInput();IN=inp;gsT+=dt;
  const tap=tapQ;tapQ=null;
  if((gs==='title'||gs==='select'||gs==='intro')&&AC&&!musicOn&&!muted)music('title');
  if(gs==='title'&&NET.role==='host'){if(lobby.style.display!=='flex')hostLobby();return;}
  if(gs==='title'){if(inp.startP||inp.attackP||inp.jumpP||tap){gs='select';gsT=0;sfx('ok');}return;}
  if(gs==='select'){
   if(inp.leftP){sel=(sel+3)%4;sfx('sel');}if(inp.rightP){sel=(sel+1)%4;sfx('sel');}
-  if(inp.jumpP){cpuOn=!cpuOn;sfx('sel');}
+  if(inp.specialP){cpuOn=!cpuOn;sfx('sel');}
   if(tap){if(tap.y>182){cpuOn=!cpuOn;sfx('sel');}else{const i=clamp(((tap.x-6)/97)|0,0,3);if(i===sel&&gsT>.3){gs='intro';gsT=0;sfx('ok');}else{sel=i;sfx('sel');}}}
-  if((inp.attackP||inp.startP)&&gsT>.2){gs='intro';gsT=0;sfx('ok');}return;}
- if(gs==='intro'&&NET.role==='host'&&anyRemoteP('attack')&&gsT>.4){consumeRemote();startGame();return;}
+  if((inp.attackP||inp.startP||inp.jumpP)&&gsT>.2){gs='intro';gsT=0;sfx('ok');}return;}
+ if(gs==='intro'&&NET.role!=='guest'&&anyRemoteP('attack')&&gsT>.4){consumeRemote();startGame();return;}
  if(gs==='intro'){if((inp.attackP||inp.startP||inp.jumpP||tap)&&gsT>.4||gsT>9)startGame();return;}
  if(gs==='pause'){if(inp.startP||tap)gs='play';return;}
- if(gs==='over'){overT-=dt;const rp=NET.role==='host'&&(anyRemoteP('attack')||anyRemoteP('start'));consumeRemote();if((inp.attackP||inp.startP||tap||rp)&&gsT>.6){for(const b of bros){if(b.human)b.lives=3;if(b.state==='dead')respawn(b);}gs='play';music('main');}
+ if(gs==='over'){overT-=dt;const rp=NET.role!=='guest'&&(anyRemoteP('attack')||anyRemoteP('start'));consumeRemote();if((inp.attackP||inp.startP||tap||rp)&&gsT>.6){for(const b of bros){if(b.human)b.lives=3;if(b.state==='dead')respawn(b);}gs='play';music('main');}
   else if(overT<=0){gs='title';gsT=0;musicOn=false;}return;}
  if(gs==='ending'){for(const f of fx){f.t+=dt;if(f.type==='bit'){f.x+=f.vx*dt;f.vz-=500*dt;f.z+=f.vz*dt;if(f.z<0){f.z=0;f.vz*=-.3;f.vx*=.6;}}if(f.type==='text')f.y-=20*dt;}fx=fx.filter(f=>f.t<f.life);
   if(banner){banner.age+=dt;if(banner.age>banner.life)banner=null;}if(flashT>0)flashT-=dt;if(shakeT>0)shakeT-=dt;else shakeM=0;
@@ -1274,6 +1309,7 @@ function drawTitle(t){
  {const pf={def:PAPA,key:'papa',pose:((t*2)|0)%3===0?'mkwave':'idle',animT:t,facing:1,inv:0,state:'idle',st:0};outlined(()=>drawBro(pf,196,196,1.5),196,196,60,110);txt('PAPA ROB',196,202,1,'#ffcc33','c');}
  if(((t*2)|0)%2)txt(isTouch?(ONLINE?'TAP SCREEN: 1 PLAYER':'TAP TO START'):'PRESS ENTER TO START',W/2,88,2,'#fff','c');
  if(hiScore)txt('HI '+hiScore,W-4,4,1,'#8a93c0','r');
+ {const np=Object.keys(padOwner).length;if(padSeen||np)txt(np>1?np+' CONTROLLERS READY - EXTRA PLAYERS PRESS A IN GAME TO JOIN':'CONTROLLER READY - MORE PLAYERS: PRESS A ON YOUR CONTROLLER',W/2,214,1,'#9fe0ff','c');}
  {const on=AC&&AC.state==='running'&&!muted;const msg=muted?(isTouch?'SOUND MUTED - TAP THE NOTE BUTTON':'SOUND MUTED - PRESS M'):on?'SOUND ON':(isTouch?'TAP SCREEN FOR SOUND':'PRESS ANY KEY FOR SOUND');txt(msg,4,4,1,on?'#556':'#ffcc33',null);}
 }
 function drawSelect(t){
@@ -1289,7 +1325,7 @@ function drawSelect(t){
   [['SPD',d.spd],['PWR',d.pwr],['HP',d.hpb]].forEach(([n,v],j)=>{txt(n,x+6,y+110+j*8,1,'#aab');for(let q=0;q<5;q++)R(x+24+q*9,y+110+j*8,7,5,q<v?'#4cd04c':'#2a3050');});
   txt('★',x+6,y+140,1,'#ffcc33');txt(d.special,x+12,y+140,1,'#ffcc33');});
  txt('CPU BROTHERS: '+(cpuOn?'ON':'OFF'),W/2,188,1,cpuOn?'#7dff7a':'#ff7a7a','c');
- txt(isTouch?'TAP TO TOGGLE':'JUMP TO TOGGLE',W/2,196,1,'#667','c');
+ txt(isTouch&&!padSeen?'TAP TO TOGGLE':'SUPER / Y TO TOGGLE',W/2,196,1,'#667','c');
  if(((t*2)|0)%2)txt(isTouch?'TAP AGAIN TO FIGHT':'HIT / ENTER TO FIGHT',W/2,210,1,'#fff','c');
 }
 const STORY=['LAST SUMMER, THREE BROTHERS','WENT NIGHT FISHING...','','BUT BIG WHISKERS SENT HIS','BAIT STEALERS AND PESTS!','',"PAPA ROB'S BIRTHDAY FISH FRY",'IS ON THE LINE!'];

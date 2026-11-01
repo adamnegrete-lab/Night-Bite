@@ -36,3 +36,18 @@ If that's a regular problem, you can add a free relay ("TURN server"):
 3. Open `index.html` in a text editor, find the line `const TURN=null;` and change it to:
    `const TURN={urls:'turn:YOUR_ADDRESS:80',username:'YOUR_USERNAME',credential:'YOUR_PASSWORD'};`
 4. Re-upload the file.
+
+## Play full screen like an app (tablet or phone)
+Open your game link (the Vercel one) in the browser, then:
+- **iPad / iPhone (Safari):** tap Share → **Add to Home Screen** → Add.
+- **Android (Chrome):** tap ⋮ → **Install app** (or Add to Home screen).
+
+Open it from the new Night Bite icon. It runs full screen with no browser bars, and still works without internet once it's been opened once (online multiplayer needs internet).
+
+You can also tap the ⛶ button (or press F on a keyboard) to go full screen inside the browser.
+
+## Xbox / PlayStation controllers
+- The first controller to press A becomes Player 1.
+- Each extra controller: press A during the game to jump in as 2P, 3P or 4P (takes over a CPU brother, or adds one).
+- A = jump/confirm, X or B = hit, Y or RB = super, Menu/Start = pause. On the select screen, Y toggles CPU brothers.
+- Touch buttons hide while you use controllers; tap the screen to bring them back.
