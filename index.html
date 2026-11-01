@@ -500,7 +500,11 @@ function toggleMute(){muted=!muted;try{localStorage.setItem('nb_mute',muted?'1':
 const keys={},tch={},latch={},KM={ArrowLeft:'left',KeyA:'left',ArrowRight:'right',KeyD:'right',ArrowUp:'up',KeyW:'up',ArrowDown:'down',KeyS:'down',KeyJ:'attack',KeyZ:'attack',KeyK:'jump',KeyX:'jump',Space:'jump',KeyL:'special',KeyC:'special',Enter:'start',KeyP:'start',Escape:'start'};
 addEventListener('keydown',e=>{initAudio();if(e.code==='KeyM'){toggleMute();return;}const k=KM[e.code];if(k){if(!keys[k])latch[k]=true;keys[k]=true;e.preventDefault();}});
 addEventListener('keyup',e=>{const k=KM[e.code];if(k)keys[k]=false;});
-let prevIn={},IN={},holdT=0;const padOwner={},padPrev={};let padSeen=false;
+let prevIn={},IN={},holdT=0;const picks={},locked={},selPrevH={};
+const PCOL=['#ffcc33','#47a6ff','#7dff7a','#e04a8a'];
+function padPids(){return [...new Set(Object.values(padOwner))].filter(p=>p>0).sort();}
+function pickTaken(i,pid){if(pid!==0&&i===sel)return true;for(const p of padPids())if(p!==pid&&locked[p]&&picks[p]===i)return true;return false;}
+function freePick(pid){for(let i=0;i<4;i++){if(i!==sel&&!padPids().some(p=>p!==pid&&picks[p]===i))return i;}return 0;}const padOwner={},padPrev={};let padSeen=false;
 function readPad(g){const B=i=>!!(g.buttons[i]&&g.buttons[i].pressed),ax=g.axes[0]||0,ay=g.axes[1]||0;return{left:ax<-.4||B(14),right:ax>.4||B(15),up:ay<-.4||B(12),down:ay>.4||B(13),attack:B(2)||B(1),jump:B(0),special:B(3)||B(5),start:B(9)};}
 function padRoute(){if(NET.role==='guest')return;let gps=[];try{gps=navigator.getGamepads?[...navigator.getGamepads()]:[];}catch(e){}
  for(const g of gps){if(!g||g.connected===false)continue;const st=readPad(g),pv=padPrev[g.index]||{};padPrev[g.index]=st;const any=Object.values(st).some(v=>v);
@@ -767,8 +771,8 @@ function startGame(){
  END=null;bobs=[];aval=null;balls=[];boat=null;boatWaves={};truck=null;mk=null;msg=null;pendingMk=null;for(const o of ORDER){texts[o]=0;sent[o]=false;}score=0;camX=0;foes=[];items=[];projs=[];fx=[];waveIdx=0;waveActive=false;spawnQ=[];boss=null;winT=0;lastZone=-1;flashT=0;
  props=[[300,200,'hotdog'],[520,168,'can'],[780,206,'stink'],[940,165,'tackle'],[1160,200,'can'],[1290,168,'stink'],[1480,205,'pizza'],[1560,170,'can'],[1760,200,'stink'],[1950,170,'fishfry'],[2150,205,'can']].map(([x,y,drop])=>({kind:'prop',x,y,hp:1,hw:10,drop}));ambush=false;
  let roster=NET.role==='host'?NET.players.slice():[{pid:0,key:PLAYABLE[sel]}];
- if(NET.role!=='host'){for(const pid of [...new Set(Object.values(padOwner))].filter(p=>p>0).sort()){const key=[...ORDER,'papa'].find(k=>!roster.some(r=>r.key===k));if(key)roster.push({pid,key});}}bros=[];
- roster.forEach((p,i)=>{const b=makeBro(p.key,true,70-i*16,[185,165,205][i]);b.pid=p.pid;bros.push(b);});human=bros[0];
+ if(NET.role!=='host'){for(const pid of padPids()){let key=picks[pid]!==undefined?PLAYABLE[picks[pid]]:null;if(!key||roster.some(r=>r.key===key))key=[...ORDER,'papa'].find(k=>!roster.some(r=>r.key===k));if(key)roster.push({pid,key});}}bros=[];
+ roster.forEach((p,i)=>{const b=makeBro(p.key,true,70-i*16,[185,165,205,195][i%4]);b.pid=p.pid;bros.push(b);});human=bros[0];
  if(cpuOn){let i=0;for(const o of ORDER)if(!roster.some(p=>p.key===o)){bros.push(makeBro(o,false,40-i*12,i?205:165));i++;}}
  gs='play';gsT=0;music('main');}
 
@@ -1143,8 +1147,13 @@ function step(dt){
  const tap=tapQ;tapQ=null;
  if((gs==='title'||gs==='select'||gs==='intro')&&AC&&!musicOn&&!muted)music('title');
  if(gs==='title'&&NET.role==='host'){if(lobby.style.display!=='flex')hostLobby();return;}
- if(gs==='title'){if(inp.startP||inp.attackP||inp.jumpP||tap){gs='select';gsT=0;sfx('ok');}return;}
+ if(gs==='title'){if(inp.startP||inp.attackP||inp.jumpP||tap){gs='select';gsT=0;sfx('ok');for(const k in picks)delete picks[k];for(const k in locked)delete locked[k];}return;}
  if(gs==='select'){
+  for(const pid of padPids()){const I=NET.inputs[pid];if(!I)continue;const h=I.h||{},ph=selPrevH[pid]||{};selPrevH[pid]=Object.assign({},h);const pr=netInput(pid);
+   if(picks[pid]===undefined)picks[pid]=freePick(pid);
+   if(!locked[pid]){if(h.left&&!ph.left){picks[pid]=(picks[pid]+3)%4;sfx('sel');}if(h.right&&!ph.right){picks[pid]=(picks[pid]+1)%4;sfx('sel');}
+    if((pr.jumpP||pr.attackP||pr.startP)&&!pickTaken(picks[pid],pid)){locked[pid]=true;sfx('ok');}}
+   else if(pr.specialP){locked[pid]=false;sfx('sel');}}
   if(inp.leftP){sel=(sel+3)%4;sfx('sel');}if(inp.rightP){sel=(sel+1)%4;sfx('sel');}
   if(inp.specialP){cpuOn=!cpuOn;sfx('sel');}
   if(tap){if(tap.y>182){cpuOn=!cpuOn;sfx('sel');}else{const i=clamp(((tap.x-6)/97)|0,0,3);if(i===sel&&gsT>.3){gs='intro';gsT=0;sfx('ok');}else{sel=i;sfx('sel');}}}
@@ -1309,7 +1318,8 @@ function drawTitle(t){
  {const pf={def:PAPA,key:'papa',pose:((t*2)|0)%3===0?'mkwave':'idle',animT:t,facing:1,inv:0,state:'idle',st:0};outlined(()=>drawBro(pf,196,196,1.5),196,196,60,110);txt('PAPA ROB',196,202,1,'#ffcc33','c');}
  if(((t*2)|0)%2)txt(isTouch?(ONLINE?'TAP SCREEN: 1 PLAYER':'TAP TO START'):'PRESS ENTER TO START',W/2,88,2,'#fff','c');
  if(hiScore)txt('HI '+hiScore,W-4,4,1,'#8a93c0','r');
- {const np=Object.keys(padOwner).length;if(padSeen||np)txt(np>1?np+' CONTROLLERS READY - EXTRA PLAYERS PRESS A IN GAME TO JOIN':'CONTROLLER READY - MORE PLAYERS: PRESS A ON YOUR CONTROLLER',W/2,214,1,'#9fe0ff','c');}
+ if(padSeen||Object.keys(padOwner).length){const own=new Set(Object.values(padOwner));const x0=W/2-70;txt('CONTROLLERS:',x0-52,214,1,'#9fe0ff');
+  for(let p=0;p<4;p++){const on=own.has(p);R(x0+p*36,212,32,9,on?PCOL[p]:'#1a1f33');R(x0+p*36,212,32,1,PCOL[p]);txt((p+1)+'P '+(on?'IN':'A'),x0+p*36+3,214,1,on?'#111':PCOL[p],null,null);}}
  {const on=AC&&AC.state==='running'&&!muted;const msg=muted?(isTouch?'SOUND MUTED - TAP THE NOTE BUTTON':'SOUND MUTED - PRESS M'):on?'SOUND ON':(isTouch?'TAP SCREEN FOR SOUND':'PRESS ANY KEY FOR SOUND');txt(msg,4,4,1,on?'#556':'#ffcc33',null);}
 }
 function drawSelect(t){
@@ -1323,8 +1333,13 @@ function drawSelect(t){
   outlined(()=>drawBro({def:d,key:k,pose:s?'walk':'idle',animT:t,facing:-1,inv:0,state:'idle',st:0},x+78,y+66,1),x+78,y+66,40,72);
   txt(d.tag,x+6,y+98,1,'#9fe0ff');
   [['SPD',d.spd],['PWR',d.pwr],['HP',d.hpb]].forEach(([n,v],j)=>{txt(n,x+6,y+110+j*8,1,'#aab');for(let q=0;q<5;q++)R(x+24+q*9,y+110+j*8,7,5,q<v?'#4cd04c':'#2a3050');});
-  txt('★',x+6,y+140,1,'#ffcc33');txt(d.special,x+12,y+140,1,'#ffcc33');});
- txt('CPU BROTHERS: '+(cpuOn?'ON':'OFF'),W/2,188,1,cpuOn?'#7dff7a':'#ff7a7a','c');
+  txt('★',x+6,y+140,1,'#ffcc33');txt(d.special,x+12,y+140,1,'#ffcc33');
+  const who=[0,...padPids()].filter(pid=>pid===0?sel===i:picks[pid]===i);
+  who.forEach((pid,j)=>{const tx=x+4+j*22,ty=y+146;const lk=pid===0||locked[pid];R(tx,ty,20,8,lk?PCOL[pid]:'#222');R(tx,ty,20,1,PCOL[pid]);txt((pid+1)+'P'+(pid>0&&lk?'★':''),tx+2,ty+2,1,lk?'#111':PCOL[pid],null,null);});
+  if(who.length>1||(who.length&&who[0]>0)){const c=PCOL[who[0]];R(x,y,92,2,c);R(x,y+154,92,2,c);R(x,y,2,156,c);R(x+90,y,2,156,c);}});
+ {const n=1+padPids().length;if(padSeen&&n<4)txt('MORE PLAYERS: PRESS A ON ANOTHER CONTROLLER',W/2,182,1,'#9fe0ff','c');
+  if(padPids().length)txt('2P-4P: D-PAD TO CHOOSE, A TO LOCK IN',W/2,204,1,'#9fe0ff','c');}
+ txt('CPU BROTHERS: '+(cpuOn?'ON':'OFF'),W/2,190,1,cpuOn?'#7dff7a':'#ff7a7a','c');
  txt(isTouch&&!padSeen?'TAP TO TOGGLE':'SUPER / Y TO TOGGLE',W/2,196,1,'#667','c');
  if(((t*2)|0)%2)txt(isTouch?'TAP AGAIN TO FIGHT':'HIT / ENTER TO FIGHT',W/2,210,1,'#fff','c');
 }
