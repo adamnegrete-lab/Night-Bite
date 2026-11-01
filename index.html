@@ -516,11 +516,12 @@ function padPids(){return [...new Set(Object.values(padOwner))].filter(p=>p>0).s
 function pickTaken(i,pid){if(pid!==0&&i===sel)return true;for(const p of padPids())if(p!==pid&&locked[p]&&picks[p]===i)return true;return false;}
 function freePick(pid){for(let i=0;i<4;i++){if(i!==sel&&!padPids().some(p=>p!==pid&&picks[p]===i))return i;}return 0;}const padOwner={},padPrev={};let padSeen=false;
 const padArm={};
-function padUsable(g){if(!g||g.connected===false)return false;if(!g.buttons||g.buttons.length<6)return false;if(g.mapping==='standard')return true;if(/pad|controller|xbox|joy|gamepad|dualshock|dualsense|8bitdo|wireless/i.test(g.id||''))return true;return g.buttons.length>=10&&g.axes&&g.axes.length>=2;}
+function padUsable(g){if(!g||g.connected===false)return false;if(!g.buttons||g.buttons.length<4)return false;if(g.mapping==='standard')return true;const A=padArm[g.index];return !!(A&&A.live);}
 function readPad(g){const A=padArm[g.index]||(padArm[g.index]={b:new Set(),ax:false,id:g.id});if(A.id!==g.id){A.b=new Set();A.ax=false;A.id=g.id;}
  const raw=i=>!!(g.buttons[i]&&(g.buttons[i].pressed||g.buttons[i].value>.5));const B=i=>{const p=raw(i);if(!p)A.b.add(i);return p&&A.b.has(i);};
  const ax=g.axes[0]||0,ay=g.axes[1]||0;if(Math.abs(ax)<.3&&Math.abs(ay)<.3)A.ax=true;const sx=A.ax?ax:0,sy=A.ax?ay:0;const std=g.mapping==='standard';
- let anyBtn=false;const joinBtns=std?[0,1,2,3,9]:[...Array(g.buttons.length).keys()];for(const i of joinBtns)if(B(i)){anyBtn=true;}
+ let anyBtn=false;const joinBtns=std?[0,1,2,3,8,9]:[...Array(g.buttons.length).keys()];for(const i of joinBtns)if(B(i)){anyBtn=true;}
+ if(!std){for(let i=0;i<g.buttons.length;i++)if(B(i))A.live=true;if(Math.abs(sx)>.7||Math.abs(sy)>.7){A.live=true;anyBtn=true;}}
  return{left:sx<-.5||B(14),right:sx>.5||B(15),up:sy<-.5||B(12),down:sy>.5||B(13),attack:B(2)||B(1),jump:B(0),special:B(3)||B(5),start:B(9)||(!std&&B(7)),anyBtn};}
 
 let padCount=0;const padLog=[];function plog(t){padLog.unshift(new Date().toLocaleTimeString()+'  '+t);padLog.length=Math.min(padLog.length,12);}
@@ -531,7 +532,7 @@ function openPadTest(){padTestOn=true;document.getElementById('padTest').style.d
 function closePadTest(){padTestOn=false;document.getElementById('padTest').style.display='none';}
 function drawPadTest(){if(!padTestOn)return;let gps=[];let err='';try{gps=navigator.getGamepads?[...navigator.getGamepads()]:[];}catch(e){err=String(e);}
  const slots=gps.map((g,i)=>{if(!g)return `<div class="pt">Slot ${i}: empty</div>`;const pressed=[];g.buttons.forEach((b,j)=>{if(b&&(b.pressed||b.value>.5))pressed.push(j);});
-  const own=padOwner[g.index];const A=padArm[g.index];const stuck=A?pressed.filter(j=>!A.b.has(j)):[];const ok=padUsable(g);return `<div class="pt ${pressed.length&&ok?'on':''}" style="${ok?'':'opacity:.55'}"><b>Slot ${i}</b>${ok?'':' · <b style="color:#ff7a7a">IGNORED (not a game controller)</b>'}${stuck.length?' · <span style="color:#ffcc33">stuck buttons ignored: '+stuck.join(',')+'</span>':''} · index ${g.index} · ${g.connected===false?'NOT CONNECTED':'connected'} · mapping "${g.mapping||'none'}" · ${g.buttons.length} buttons<br>${(g.id||'').slice(0,70)}<br>Buttons down: <b>${pressed.length?pressed.join(', '):'-'}</b> · Stick: ${(g.axes[0]||0).toFixed(2)}, ${(g.axes[1]||0).toFixed(2)}<br>Player: <b style="color:${own===undefined?'#888':PCOL[own]}">${own===undefined?'not joined yet':(own+1)+'P'}</b></div>`;}).join('');
+  const own=padOwner[g.index];const A=padArm[g.index];const stuck=A?pressed.filter(j=>!A.b.has(j)):[];const ok=padUsable(g);return `<div class="pt ${pressed.length&&ok?'on':''}" style="${ok?'':'opacity:.55'}"><b>Slot ${i}</b>${ok?'':' · <b style="color:#ff7a7a">WAITING: press a button on it</b>'}${stuck.length?' · <span style="color:#ffcc33">stuck buttons ignored: '+stuck.join(',')+'</span>':''} · index ${g.index} · ${g.connected===false?'NOT CONNECTED':'connected'} · mapping "${g.mapping||'none'}" · ${g.buttons.length} buttons<br>${(g.id||'').slice(0,70)}<br>Buttons down: <b>${pressed.length?pressed.join(', '):'-'}</b> · Stick: ${(g.axes[0]||0).toFixed(2)}, ${(g.axes[1]||0).toFixed(2)}<br>Player: <b style="color:${own===undefined?'#888':PCOL[own]}">${own===undefined?'not joined yet':(own+1)+'P'}</b></div>`;}).join('');
  document.getElementById('padTestCard').innerHTML=`<h2>CONTROLLER TEST</h2><p>Hold a button on each controller. Every controller should appear below and light up green.</p>
  <p>The browser reports <b>${gps.filter(g=>g).length}</b> device(s) in <b>${gps.length}</b> slot(s); <b>${gps.filter(padUsable).length}</b> look like game controllers.${err?' Error: '+err:''}<br>${navigator.userAgent.slice(0,120)}</p>${slots||'<div class="pt">No controller slots reported. Press a button on a controller.</div>'}
  <div class="log">${padLog.join('\n')||'No connect events yet.'}</div><button id="ptReset">RESET PLAYER SLOTS</button><button id="ptClose">CLOSE</button>`;
@@ -540,6 +541,7 @@ setInterval(drawPadTest,150);
 document.getElementById('padBtn').onclick=e=>{e.stopPropagation();openPadTest();};document.getElementById('padBtn').addEventListener('pointerdown',e=>e.stopPropagation());
 addEventListener('keydown',e=>{if(e.code==='KeyG')padTestOn?closePadTest():openPadTest();});
 function padRoute(){if(NET.role==='guest'||padTestOn)return;let gps=[];try{gps=navigator.getGamepads?[...navigator.getGamepads()]:[];}catch(e){}
+ for(const g of gps){if(g&&g.connected!==false&&g.buttons&&g.buttons.length>=4)readPad(g);}
  padCount=gps.filter(padUsable).length;
  for(const g of gps){if(!padUsable(g))continue;const st=readPad(g),pv=padPrev[g.index]||{};padPrev[g.index]=st;const any=st.anyBtn||st.left||st.right||st.up||st.down;
   if(any&&!padSeen){padSeen=true;ui.classList.add('pad');}if(any)ui.classList.add('pad');
