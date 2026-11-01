@@ -515,8 +515,14 @@ const PCOL=['#ffcc33','#47a6ff','#7dff7a','#e04a8a'];
 function padPids(){return [...new Set(Object.values(padOwner))].filter(p=>p>0).sort();}
 function pickTaken(i,pid){if(pid!==0&&i===sel)return true;for(const p of padPids())if(p!==pid&&locked[p]&&picks[p]===i)return true;return false;}
 function freePick(pid){for(let i=0;i<4;i++){if(i!==sel&&!padPids().some(p=>p!==pid&&picks[p]===i))return i;}return 0;}const padOwner={},padPrev={};let padSeen=false;
-function readPad(g){const B=i=>!!(g.buttons[i]&&(g.buttons[i].pressed||g.buttons[i].value>.5)),ax=g.axes[0]||0,ay=g.axes[1]||0,std=g.mapping==='standard';let anyBtn=false;for(let i=0;i<g.buttons.length;i++)if(B(i)){anyBtn=true;break;}
- return{left:ax<-.4||B(14),right:ax>.4||B(15),up:ay<-.4||B(12),down:ay>.4||B(13),attack:B(2)||B(1),jump:B(0),special:B(3)||B(5),start:B(9)||(!std&&B(7)),anyBtn};}
+const padArm={};
+function padUsable(g){if(!g||g.connected===false)return false;if(!g.buttons||g.buttons.length<6)return false;if(g.mapping==='standard')return true;if(/pad|controller|xbox|joy|gamepad|dualshock|dualsense|8bitdo|wireless/i.test(g.id||''))return true;return g.buttons.length>=10&&g.axes&&g.axes.length>=2;}
+function readPad(g){const A=padArm[g.index]||(padArm[g.index]={b:new Set(),ax:false,id:g.id});if(A.id!==g.id){A.b=new Set();A.ax=false;A.id=g.id;}
+ const raw=i=>!!(g.buttons[i]&&(g.buttons[i].pressed||g.buttons[i].value>.5));const B=i=>{const p=raw(i);if(!p)A.b.add(i);return p&&A.b.has(i);};
+ const ax=g.axes[0]||0,ay=g.axes[1]||0;if(Math.abs(ax)<.3&&Math.abs(ay)<.3)A.ax=true;const sx=A.ax?ax:0,sy=A.ax?ay:0;const std=g.mapping==='standard';
+ let anyBtn=false;const joinBtns=std?[0,1,2,3,9]:[...Array(g.buttons.length).keys()];for(const i of joinBtns)if(B(i)){anyBtn=true;}
+ return{left:sx<-.5||B(14),right:sx>.5||B(15),up:sy<-.5||B(12),down:sy>.5||B(13),attack:B(2)||B(1),jump:B(0),special:B(3)||B(5),start:B(9)||(!std&&B(7)),anyBtn};}
+
 let padCount=0;const padLog=[];function plog(t){padLog.unshift(new Date().toLocaleTimeString()+'  '+t);padLog.length=Math.min(padLog.length,12);}
 addEventListener('gamepadconnected',e=>plog('CONNECTED #'+e.gamepad.index+' '+e.gamepad.id.slice(0,40)));
 addEventListener('gamepaddisconnected',e=>plog('DISCONNECTED #'+e.gamepad.index+' '+e.gamepad.id.slice(0,40)));
@@ -525,17 +531,17 @@ function openPadTest(){padTestOn=true;document.getElementById('padTest').style.d
 function closePadTest(){padTestOn=false;document.getElementById('padTest').style.display='none';}
 function drawPadTest(){if(!padTestOn)return;let gps=[];let err='';try{gps=navigator.getGamepads?[...navigator.getGamepads()]:[];}catch(e){err=String(e);}
  const slots=gps.map((g,i)=>{if(!g)return `<div class="pt">Slot ${i}: empty</div>`;const pressed=[];g.buttons.forEach((b,j)=>{if(b&&(b.pressed||b.value>.5))pressed.push(j);});
-  const own=padOwner[g.index];return `<div class="pt ${pressed.length?'on':''}"><b>Slot ${i}</b> · index ${g.index} · ${g.connected===false?'NOT CONNECTED':'connected'} · mapping "${g.mapping||'none'}" · ${g.buttons.length} buttons<br>${(g.id||'').slice(0,70)}<br>Buttons down: <b>${pressed.length?pressed.join(', '):'-'}</b> · Stick: ${(g.axes[0]||0).toFixed(2)}, ${(g.axes[1]||0).toFixed(2)}<br>Player: <b style="color:${own===undefined?'#888':PCOL[own]}">${own===undefined?'not joined yet':(own+1)+'P'}</b></div>`;}).join('');
+  const own=padOwner[g.index];const A=padArm[g.index];const stuck=A?pressed.filter(j=>!A.b.has(j)):[];const ok=padUsable(g);return `<div class="pt ${pressed.length&&ok?'on':''}" style="${ok?'':'opacity:.55'}"><b>Slot ${i}</b>${ok?'':' · <b style="color:#ff7a7a">IGNORED (not a game controller)</b>'}${stuck.length?' · <span style="color:#ffcc33">stuck buttons ignored: '+stuck.join(',')+'</span>':''} · index ${g.index} · ${g.connected===false?'NOT CONNECTED':'connected'} · mapping "${g.mapping||'none'}" · ${g.buttons.length} buttons<br>${(g.id||'').slice(0,70)}<br>Buttons down: <b>${pressed.length?pressed.join(', '):'-'}</b> · Stick: ${(g.axes[0]||0).toFixed(2)}, ${(g.axes[1]||0).toFixed(2)}<br>Player: <b style="color:${own===undefined?'#888':PCOL[own]}">${own===undefined?'not joined yet':(own+1)+'P'}</b></div>`;}).join('');
  document.getElementById('padTestCard').innerHTML=`<h2>CONTROLLER TEST</h2><p>Hold a button on each controller. Every controller should appear below and light up green.</p>
- <p>The browser reports <b>${gps.filter(g=>g).length}</b> controller(s) in <b>${gps.length}</b> slot(s).${err?' Error: '+err:''}<br>${navigator.userAgent.slice(0,120)}</p>${slots||'<div class="pt">No controller slots reported. Press a button on a controller.</div>'}
+ <p>The browser reports <b>${gps.filter(g=>g).length}</b> device(s) in <b>${gps.length}</b> slot(s); <b>${gps.filter(padUsable).length}</b> look like game controllers.${err?' Error: '+err:''}<br>${navigator.userAgent.slice(0,120)}</p>${slots||'<div class="pt">No controller slots reported. Press a button on a controller.</div>'}
  <div class="log">${padLog.join('\n')||'No connect events yet.'}</div><button id="ptReset">RESET PLAYER SLOTS</button><button id="ptClose">CLOSE</button>`;
  document.getElementById('ptClose').onclick=closePadTest;document.getElementById('ptReset').onclick=()=>{for(const k in padOwner)delete padOwner[k];for(const k in padPrev)delete padPrev[k];plog('player slots reset');};}
 setInterval(drawPadTest,150);
 document.getElementById('padBtn').onclick=e=>{e.stopPropagation();openPadTest();};document.getElementById('padBtn').addEventListener('pointerdown',e=>e.stopPropagation());
 addEventListener('keydown',e=>{if(e.code==='KeyG')padTestOn?closePadTest():openPadTest();});
 function padRoute(){if(NET.role==='guest'||padTestOn)return;let gps=[];try{gps=navigator.getGamepads?[...navigator.getGamepads()]:[];}catch(e){}
- padCount=gps.filter(g=>g&&g.connected!==false).length;
- for(const g of gps){if(!g||g.connected===false)continue;const st=readPad(g),pv=padPrev[g.index]||{};padPrev[g.index]=st;const any=st.anyBtn||st.left||st.right||st.up||st.down;
+ padCount=gps.filter(padUsable).length;
+ for(const g of gps){if(!padUsable(g))continue;const st=readPad(g),pv=padPrev[g.index]||{};padPrev[g.index]=st;const any=st.anyBtn||st.left||st.right||st.up||st.down;
   if(any&&!padSeen){padSeen=true;ui.classList.add('pad');}if(any)ui.classList.add('pad');
   const own=padOwner[g.index];
   if(own===undefined){const pressed=st.anyBtn&&!pv.anyBtn;if(!pressed)continue;
@@ -552,8 +558,8 @@ addEventListener('gamepaddisconnected',e=>{const pid=padOwner[e.gamepad.index];d
 addEventListener('gamepadconnected',()=>{ui.classList.add('pad');});
 function readInput(){
  const c={left:keys.left||tch.left,right:keys.right||tch.right,up:keys.up||tch.up,down:keys.down||tch.down,attack:keys.attack||tch.attack,jump:keys.jump||tch.jump,special:keys.special||tch.special,start:keys.start||tch.start};
- try{const gps=navigator.getGamepads?navigator.getGamepads():[];for(const g of gps){if(!g)continue;if(padOwner[g.index]>0)continue;const ax=g.axes[0]||0,ay=g.axes[1]||0,B=i=>g.buttons[i]&&g.buttons[i].pressed;
-  c.left=c.left||ax<-.4||B(14);c.right=c.right||ax>.4||B(15);c.up=c.up||ay<-.4||B(12);c.down=c.down||ay>.4||B(13);c.attack=c.attack||B(2)||B(1);c.jump=c.jump||B(0);c.special=c.special||B(3)||B(5);c.start=c.start||B(9);}}catch(e){}
+ try{const gps=navigator.getGamepads?navigator.getGamepads():[];for(const g of gps){if(!padUsable(g))continue;const own=padOwner[g.index];if(own>0)continue;if(own===undefined&&Object.values(padOwner).includes(0))continue;const st=readPad(g);
+  for(const k of ['left','right','up','down','attack','jump','special','start'])c[k]=c[k]||st[k];}}catch(e){}
  const o={};for(const k in c){o[k]=!!c[k]||!!latch[k];o[k+'P']=(!!c[k]&&!prevIn[k])||!!latch[k];latch[k]=false;}
  if(tch.attack){holdT+=1/60;if(holdT>.32){holdT=.08;o.attackP=true;}}else holdT=0;
  o.x=(o.right?1:0)-(o.left?1:0);o.y=(o.down?1:0)-(o.up?1:0);if(tch.ax!==undefined&&(tch.ax||tch.ay)){o.x=tch.ax;o.y=tch.ay;}
@@ -743,6 +749,11 @@ function guestTick(dt){const inp=readInput();
  if(NET.lastSnap){applySnap(NET.lastSnap);NET.lastSnap=null;}
  if(tapQ)NET.ctr.attack++;tapQ=null;}
 // ================= GAME STATE =================
+let pauseSel=0;
+function pauseGo(){sfx('ok');if(pauseSel===0){gs='play';return;}newGame();}
+function newGame(){pauseSel=0;END=null;truck=null;mk=null;aval=null;boss=null;foes=[];fx=[];banner=null;flashT=0;
+ if(NET.role==='host'){gs='title';gsT=0;NET.inGame=false;hostLobby();return;}
+ gs='select';gsT=0;for(const k in picks)delete picks[k];for(const k in locked)delete locked[k];music('title');}
 let AUTO=false,gs='title',gsT=0,sel=0,cpuOn=true,score=0,hiScore=0,camX=0,bros=[],foes=[],props=[],items=[],projs=[],fx=[];
 let boat=null,boatWaves={};
 function launchBoat(){if(bros.some(b=>b.key==='papa'))return;boat={x:camX+W+70,t:0,tossed:false,item:Math.random()<.5?'can':(Math.random()<.5?'pizza':'hotdog')};sfx('honk');}
@@ -1189,7 +1200,9 @@ function step(dt){
   if((inp.attackP||inp.startP||inp.jumpP)&&gsT>.2){gs='intro';gsT=0;sfx('ok');}return;}
  if(gs==='intro'&&NET.role!=='guest'&&anyRemoteP('attack')&&gsT>.4){consumeRemote();startGame();return;}
  if(gs==='intro'){if((inp.attackP||inp.startP||inp.jumpP||tap)&&gsT>.4||gsT>9)startGame();return;}
- if(gs==='pause'){if(inp.startP||tap)gs='play';return;}
+ if(gs==='pause'){if(inp.leftP||inp.rightP||inp.upP||inp.downP){pauseSel=pauseSel?0:1;sfx('sel');}
+  if(tap&&tap.y>96&&tap.y<126){pauseSel=tap.x<W/2?0:1;pauseGo();return;}
+  if(inp.startP){gs='play';return;}if(inp.attackP||inp.jumpP)pauseGo();return;}
  if(gs==='over'){overT-=dt;const rp=NET.role!=='guest'&&(anyRemoteP('attack')||anyRemoteP('start'));consumeRemote();if((inp.attackP||inp.startP||tap||rp)&&gsT>.6){for(const b of bros){if(b.human)b.lives=3;if(b.state==='dead')respawn(b);}gs='play';music('main');}
   else if(overT<=0){gs='title';gsT=0;musicOn=false;}return;}
  if(gs==='ending'){for(const f of fx){f.t+=dt;if(f.type==='bit'){f.x+=f.vx*dt;f.vz-=500*dt;f.z+=f.vz*dt;if(f.z<0){f.z=0;f.vz*=-.3;f.vx*=.6;}}if(f.type==='text')f.y-=20*dt;}fx=fx.filter(f=>f.t<f.life);
@@ -1331,7 +1344,9 @@ function renderG(){
  if(gs==='win')return drawWin(t);
  if(gs==='ending')return renderEnding(t);
  drawWorld(t);drawHUD(t);
- if(gs==='pause'){R(0,0,W,H,'rgba(0,0,0,.55)');bigTxt('PAUSED',W/2,80,4,'#fff','#888','#222');txt(isTouch?'TAP TO RESUME':'PRESS ENTER TO RESUME',W/2,120,1,'#ccc','c');
+ if(gs==='pause'){R(0,0,W,H,'rgba(0,0,0,.6)');bigTxt('PAUSED',W/2,52,4,'#fff','#888','#222');
+  [['RESUME',W/2-92],['NEW GAME',W/2+8]].forEach(([l,x],i)=>{const on=pauseSel===i;R(x,98,84,26,on?'#ffcc33':'#1d2a5a');R(x,98,84,2,on?'#fff':'#47a6ff');txt(l,x+42,107,2,on?'#111':'#fff','c',null);});
+  txt(isTouch?'TAP A BUTTON  (OR A ON A CONTROLLER)':'ARROWS TO CHOOSE, HIT TO SELECT, ENTER TO RESUME',W/2,130,1,'#ccc','c');
   txt('MOVE: ARROWS/WASD  HIT: J/Z  JUMP: K/X  SPECIAL: L/C',W/2,150,1,'#9fe0ff','c');txt('JUMP + HIT = FLYING KICK   HIT X3 = COMBO',W/2,162,1,'#9fe0ff','c');txt('SILVER BULLET = JET SKI   STINK BAIT = AMBUSH!',W/2,174,1,'#ffcc33','c');txt('DEAL DAMAGE TO TEXT MKINI - 3 TEXTS CALLS HIM IN',W/2,198,1,'#9fe0ff','c');txt('ON THE JET SKI: HIT = BOOST  JUMP = HOP',W/2,186,1,'#47e0ff','c');}
  if(gs==='over'){R(0,0,W,H,'rgba(20,0,0,.6)');bigTxt('GAME OVER',W/2,70,4,'#ff5a4a','#8a1a10','#2a0000');txt('CONTINUE?',W/2,112,2,'#fff','c');bigTxt(String(Math.max(0,Math.ceil(overT))),W/2,130,4,'#ffcc33','#c0461b','#3a1600');txt(isTouch?'TAP TO CONTINUE':'PRESS HIT TO CONTINUE',W/2,170,1,'#ccc','c');}
 }
